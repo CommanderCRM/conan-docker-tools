@@ -5,12 +5,14 @@ ARG DOCKER_TAG
 ARG DISTRO_VERSION
 ARG DISTRO
 ARG SUFFIX
+ARG CONAN_VERSION
+ARG CONAN_LEGACY_VERSION
 
 FROM ubuntu:${DISTRO_VERSION} as builder
 
 HEALTHCHECK NONE
 
-USER conan
+RUN useradd -ms /bin/bash conan
 
 LABEL maintainer="Conan.io <info@conan.io>"
 
@@ -254,9 +256,9 @@ RUN cmake ../llvm \
              install-llvm-split \
              install-llvm-undname \
     && cp -a "lib/clang/${CLANG_VERSION}/include" "/tmp/install/lib/clang/${CLANG_VERSION}/include" \
-    && cp "$(find lib -name '*.so*')" "/tmp/install/lib"
+    && cp '$(find lib -name "*.so*")' "/tmp/install/lib"
 
-FROM ${DOCKERHUB_USERNAME}/gcc${LIBSTDCPP_MAJOR_VERSION}-${DISTRO}:${CONAN_VERSION} as libstdcpp
+FROM ${DOCKERHUB_USERNAME}/gcc${LIBSTDCPP_MAJOR_VERSION}-${DISTRO}:${CONAN_LEGACY_VERSION} as libstdcpp
 
 FROM ${DOCKER_USERNAME}/base-${DISTRO}${SUFFIX}:${DOCKER_TAG} as deploy
 
@@ -277,7 +279,6 @@ ENV CC=clang \
     CMAKE_C_COMPILER=clang \
     CMAKE_CXX_COMPILER=clang++
 
-USER root
 RUN mv /tmp/gcc/lib64 /usr/local/ \
     && ln -s -f /usr/local/lib64/libstdc++.so.6.0.${LIBSTDCPP_PATCH_VERSION} /usr/local/lib64/libstdc++.so.6 \
     && ln -s -f /usr/local/lib64/libstdc++.so.6 /usr/local/lib64/libstdc++.so \

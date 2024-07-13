@@ -4,8 +4,6 @@ FROM $SOURCE_CONANIO_IMAGE:${SOURCE_CONANIO_TAG} as base
 
 HEALTHCHECK NONE
 
-USER root
-
 COPY install-openjdk-ppa.sh /tmp/install-openjdk-ppa.sh
 COPY cacert /etc/ssl/certs/java/cacerts
 
@@ -13,6 +11,7 @@ COPY cacert /etc/ssl/certs/java/cacerts
 
 ARG JAVA_JDK_VERSION=11
 
+USER root
 RUN /tmp/install-openjdk-ppa.sh \
     && apt-get -qq update \
     && apt-get -q --no-install-recommends install -y openjdk-${JAVA_JDK_VERSION}-jre-headless curl \

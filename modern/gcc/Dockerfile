@@ -8,9 +8,9 @@ FROM ubuntu:${DISTRO_VERSION} as builder
 
 HEALTHCHECK NONE
 
-USER conan
-
 LABEL maintainer="Conan.io <info@conan.io>"
+
+RUN useradd -ms /bin/bash conan
 
 RUN apt-get -qq update \
     && apt-get -qq install -y --no-install-recommends --no-install-suggests -o=Dpkg::Use-Pty=0 \
@@ -64,7 +64,6 @@ ARG GCC_VERSION
 COPY --from=builder /tmp/install /tmp/install
 COPY gcc_bootstrap.sh /opt/conan/gcc_bootstrap.sh
 
-USER root
 RUN rm -rf /usr/lib/gcc/x86_64-linux-gnu/* \
     && cp -a /tmp/install/lib/gcc/x86_64-linux-gnu/${GCC_VERSION} /usr/lib/gcc/x86_64-linux-gnu/ \
     && cp -a /tmp/install/include/* /usr/local/include/ \
@@ -79,6 +78,7 @@ RUN rm -rf /usr/lib/gcc/x86_64-linux-gnu/* \
     && chmod +x /opt/conan/gcc_bootstrap.sh \
     && /opt/conan/gcc_bootstrap.sh \
     && rm -f /opt/conan/gcc_bootstrap.sh
-USER conan
 
 COPY specs /usr/local/lib/gcc/x86_64-linux-gnu/${GCC_VERSION}/specs
+
+USER conan
