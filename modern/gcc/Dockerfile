@@ -6,6 +6,10 @@ ARG SUFFIX
 
 FROM ubuntu:${DISTRO_VERSION} as builder
 
+HEALTHCHECK NONE
+
+USER conan
+
 LABEL maintainer="Conan.io <info@conan.io>"
 
 RUN apt-get -qq update \
@@ -29,7 +33,7 @@ RUN apt-get -qq update \
 
 ARG GCC_VERSION
 
-RUN wget -q --no-check-certificate http://mirror.koddos.net/gcc/releases/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.xz \
+RUN wget -q http://mirror.koddos.net/gcc/releases/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.xz \
     && tar Jxf gcc-${GCC_VERSION}.tar.xz
 
 # INFO: GCC build reference: https://gcc.gnu.org/install/configure.html
@@ -38,8 +42,8 @@ RUN wget -q --no-check-certificate http://mirror.koddos.net/gcc/releases/gcc-${G
 # Enable Fortran as lapack package is basically broken
 # No nls (native language support) because we only use English in Conan Center
 
-RUN cd gcc-${GCC_VERSION} \
-    && ./configure \
+WORKDIR /gcc-${GCC_VERSION}
+RUN ./configure \
                    --build=x86_64-linux-gnu \
                    --disable-bootstrap \
                    --disable-multilib \
@@ -50,7 +54,7 @@ RUN cd gcc-${GCC_VERSION} \
                    --with-system-zlib \
                    --prefix=/tmp/install \
                    --enable-linker-build-id \
-    && make -s -j$(nproc) \
+    && make -s "-j$(nproc)" \
     && make install-strip
 
 FROM ${DOCKER_USERNAME}/base-${DISTRO}${SUFFIX}:${DOCKER_TAG} as deploy
@@ -60,19 +64,21 @@ ARG GCC_VERSION
 COPY --from=builder /tmp/install /tmp/install
 COPY gcc_bootstrap.sh /opt/conan/gcc_bootstrap.sh
 
-RUN sudo rm -rf /usr/lib/gcc/x86_64-linux-gnu/* \
-    && sudo cp -a /tmp/install/lib/gcc/x86_64-linux-gnu/${GCC_VERSION} /usr/lib/gcc/x86_64-linux-gnu/ \
-    && sudo cp -a /tmp/install/include/* /usr/local/include/ \
-    && sudo cp -a /tmp/install/lib64/ /usr/local/ \
-    && sudo cp -a /tmp/install/libexec/ /usr/local/ \
-    && sudo cp -a /tmp/install/lib/* /usr/local/lib/ \
-    && sudo cp -a /tmp/install/bin/* /usr/local/bin/ \
-    && sudo rm -rf /tmp/install \
-    && sudo update-alternatives --install /usr/local/bin/cc cc /usr/local/bin/gcc 100 \
-    && sudo rm /etc/ld.so.cache \
-    && sudo ldconfig -C /etc/ld.so.cache \
-    && sudo chmod +x /opt/conan/gcc_bootstrap.sh \
+USER root
+RUN rm -rf /usr/lib/gcc/x86_64-linux-gnu/* \
+    && cp -a /tmp/install/lib/gcc/x86_64-linux-gnu/${GCC_VERSION} /usr/lib/gcc/x86_64-linux-gnu/ \
+    && cp -a /tmp/install/include/* /usr/local/include/ \
+    && cp -a /tmp/install/lib64/ /usr/local/ \
+    && cp -a /tmp/install/libexec/ /usr/local/ \
+    && cp -a /tmp/install/lib/* /usr/local/lib/ \
+    && cp -a /tmp/install/bin/* /usr/local/bin/ \
+    && rm -rf /tmp/install \
+    && update-alternatives --install /usr/local/bin/cc cc /usr/local/bin/gcc 100 \
+    && rm /etc/ld.so.cache \
+    && ldconfig -C /etc/ld.so.cache \
+    && chmod +x /opt/conan/gcc_bootstrap.sh \
     && /opt/conan/gcc_bootstrap.sh \
-    && sudo rm -f /opt/conan/gcc_bootstrap.sh
+    && rm -f /opt/conan/gcc_bootstrap.sh
+USER conan
 
 COPY specs /usr/local/lib/gcc/x86_64-linux-gnu/${GCC_VERSION}/specs

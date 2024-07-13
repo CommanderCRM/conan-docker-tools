@@ -8,6 +8,10 @@ ARG SUFFIX
 
 FROM ubuntu:${DISTRO_VERSION} as builder
 
+HEALTHCHECK NONE
+
+USER conan
+
 LABEL maintainer="Conan.io <info@conan.io>"
 
 # FIXME: Clang 9 and 10 fail to build libcxx because they try to link libc++abi from system.
@@ -31,11 +35,11 @@ RUN apt-get -qq update \
        unzip \
        gnupg
 
-RUN wget -q --no-check-certificate https://github.com/ninja-build/ninja/releases/download/v1.11.0/ninja-linux.zip \
+RUN wget -q https://github.com/ninja-build/ninja/releases/download/v1.11.0/ninja-linux.zip \
     && unzip ninja-linux.zip \
     && mv ninja /usr/bin/ninja
 
-RUN wget -q --no-check-certificate https://cmake.org/files/v3.15/cmake-3.15.7-Linux-x86_64.tar.gz \
+RUN wget -q https://cmake.org/files/v3.15/cmake-3.15.7-Linux-x86_64.tar.gz \
     && tar -xzf cmake-3.15.7-Linux-x86_64.tar.gz \
        --exclude=bin/cmake-gui \
        --exclude=doc/cmake \
@@ -45,22 +49,22 @@ RUN wget -q --no-check-certificate https://cmake.org/files/v3.15/cmake-3.15.7-Li
     && cp -fR cmake-3.15.7-Linux-x86_64/* /usr
 
 RUN printf 'deb http://apt.llvm.org/xenial/   llvm-toolchain-xenial-10  main\n' > /etc/apt/sources.list.d/llvm.list \
-    && wget -q --no-check-certificate https://apt.llvm.org/llvm-snapshot.gpg.key \
+    && wget -q https://apt.llvm.org/llvm-snapshot.gpg.key \
     && apt-key add llvm-snapshot.gpg.key \
     && apt-get -qq update \
     && apt-get -qq install -y --no-install-recommends --no-install-suggests -o=Dpkg::Use-Pty=0 clang-10 lld-10 libc++-10-dev
 
 ARG CLANG_VERSION
 
-RUN wget -q --no-check-certificate https://github.com/llvm/llvm-project/archive/llvmorg-${CLANG_VERSION}.tar.gz \
+RUN wget -q https://github.com/llvm/llvm-project/archive/llvmorg-${CLANG_VERSION}.tar.gz \
     && tar zxf llvmorg-${CLANG_VERSION}.tar.gz \
     && sed -E -i 's/OUTPUT_NAME\s+"unwind"/OUTPUT_NAME "llvm-unwind"/g' llvm-project-llvmorg-${CLANG_VERSION}/libunwind/src/CMakeLists.txt \
     && sed -i 's/unwind/llvm-unwind/g' llvm-project-llvmorg-${CLANG_VERSION}/clang/lib/Driver/ToolChains/CommonArgs.cpp
 
-RUN cd llvm-project-llvmorg-${CLANG_VERSION} \
-    && mkdir build \
-    && cd build/ \
-    && cmake ../llvm \
+WORKDIR /llvm-project-llvmorg-${CLANG_VERSION}
+RUN mkdir build
+WORKDIR /llvm-project-llvmorg-${CLANG_VERSION}/build
+RUN cmake ../llvm \
        -G Ninja \
        -DCMAKE_CXX_COMPILER=clang++-10 \
        -DCMAKE_C_COMPILER=clang-10 \
@@ -249,10 +253,10 @@ RUN cd llvm-project-llvmorg-${CLANG_VERSION} \
              install-llvm-rc \
              install-llvm-split \
              install-llvm-undname \
-    && cp -a lib/clang/${CLANG_VERSION}/include /tmp/install/lib/clang/${CLANG_VERSION}/include \
-    && cp $(find lib -name "*.so*") /tmp/install/lib
+    && cp -a "lib/clang/${CLANG_VERSION}/include" "/tmp/install/lib/clang/${CLANG_VERSION}/include" \
+    && cp "$(find lib -name '*.so*')" "/tmp/install/lib"
 
-FROM ${DOCKERHUB_USERNAME}/gcc${LIBSTDCPP_MAJOR_VERSION}-${DISTRO}:latest as libstdcpp
+FROM ${DOCKERHUB_USERNAME}/gcc${LIBSTDCPP_MAJOR_VERSION}-${DISTRO}:${CONAN_VERSION} as libstdcpp
 
 FROM ${DOCKER_USERNAME}/base-${DISTRO}${SUFFIX}:${DOCKER_TAG} as deploy
 
@@ -273,24 +277,26 @@ ENV CC=clang \
     CMAKE_C_COMPILER=clang \
     CMAKE_CXX_COMPILER=clang++
 
-RUN sudo mv /tmp/gcc/lib64 /usr/local/ \
-    && sudo ln -s -f /usr/local/lib64/libstdc++.so.6.0.${LIBSTDCPP_PATCH_VERSION} /usr/local/lib64/libstdc++.so.6 \
-    && sudo ln -s -f /usr/local/lib64/libstdc++.so.6 /usr/local/lib64/libstdc++.so \
-    && sudo cp -a /tmp/gcc/include/* /usr/local/include/ \
-    && sudo rm -rf /usr/lib/gcc/x86_64-linux-gnu/* \
-    && sudo cp -a /tmp/gcc/lib/gcc/x86_64-linux-gnu/${LIBSTDCPP_VERSION} /usr/lib/gcc/x86_64-linux-gnu/ \
-    && sudo cp -a /tmp/gcc/lib/* /usr/local/lib/ \
-    && sudo rm -rf /tmp/gcc \
-    && sudo cp -a /tmp/clang/bin/* /usr/local/bin/ \
-    && sudo cp -a /tmp/clang/lib/* /usr/local/lib/ \
-    && sudo cp -a /tmp/clang/include/* /usr/local/include/ \
-    && sudo rm -rf /tmp/clang \
-    && sudo update-alternatives --install /usr/local/bin/cc cc /usr/local/bin/clang 100 \
-    && sudo update-alternatives --install /usr/local/bin/cpp ccp /usr/local/bin/clang++ 100 \
-    && sudo update-alternatives --install /usr/local/bin/c++ c++ /usr/local/bin/clang++ 100 \
-    && sudo update-alternatives --install /usr/local/bin/ld ld /usr/local/bin/ld.lld 100 \
-    && sudo rm /etc/ld.so.cache \
-    && sudo ldconfig -C /etc/ld.so.cache \
-    && sudo chmod +x /opt/conan/clang_bootstrap.sh \
+USER root
+RUN mv /tmp/gcc/lib64 /usr/local/ \
+    && ln -s -f /usr/local/lib64/libstdc++.so.6.0.${LIBSTDCPP_PATCH_VERSION} /usr/local/lib64/libstdc++.so.6 \
+    && ln -s -f /usr/local/lib64/libstdc++.so.6 /usr/local/lib64/libstdc++.so \
+    && cp -a /tmp/gcc/include/* /usr/local/include/ \
+    && rm -rf /usr/lib/gcc/x86_64-linux-gnu/* \
+    && cp -a /tmp/gcc/lib/gcc/x86_64-linux-gnu/${LIBSTDCPP_VERSION} /usr/lib/gcc/x86_64-linux-gnu/ \
+    && cp -a /tmp/gcc/lib/* /usr/local/lib/ \
+    && rm -rf /tmp/gcc \
+    && cp -a /tmp/clang/bin/* /usr/local/bin/ \
+    && cp -a /tmp/clang/lib/* /usr/local/lib/ \
+    && cp -a /tmp/clang/include/* /usr/local/include/ \
+    && rm -rf /tmp/clang \
+    && update-alternatives --install /usr/local/bin/cc cc /usr/local/bin/clang 100 \
+    && update-alternatives --install /usr/local/bin/cpp ccp /usr/local/bin/clang++ 100 \
+    && update-alternatives --install /usr/local/bin/c++ c++ /usr/local/bin/clang++ 100 \
+    && update-alternatives --install /usr/local/bin/ld ld /usr/local/bin/ld.lld 100 \
+    && rm /etc/ld.so.cache \
+    && ldconfig -C /etc/ld.so.cache \
+    && chmod +x /opt/conan/clang_bootstrap.sh \
     && /opt/conan/clang_bootstrap.sh \
-    && sudo rm -f /opt/conan/clang_bootstrap.sh
+    && rm -f /opt/conan/clang_bootstrap.sh
+USER conan

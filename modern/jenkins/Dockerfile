@@ -1,5 +1,8 @@
 ARG SOURCE_CONANIO_IMAGE
-FROM $SOURCE_CONANIO_IMAGE as base
+ARG SOURCE_CONANIO_TAG
+FROM $SOURCE_CONANIO_IMAGE:${SOURCE_CONANIO_TAG} as base
+
+HEALTHCHECK NONE
 
 USER root
 
@@ -12,7 +15,7 @@ ARG JAVA_JDK_VERSION=11
 
 RUN /tmp/install-openjdk-ppa.sh \
     && apt-get -qq update \
-    && apt-get -q install -y openjdk-${JAVA_JDK_VERSION}-jre-headless curl \
+    && apt-get -q --no-install-recommends install -y openjdk-${JAVA_JDK_VERSION}-jre-headless curl \
     && /var/lib/dpkg/info/ca-certificates-java.postinst configure \
     && apt-get -q clean -y \
     && rm -rf /var/lib/apt/lists/* \

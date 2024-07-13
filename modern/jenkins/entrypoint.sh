@@ -1,2 +1,2 @@
 #!/bin/bash
-jenkins-client $@
+jenkins-client "$@"

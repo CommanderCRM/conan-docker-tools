@@ -2,6 +2,8 @@ ARG DISTRO_VERSION
 
 FROM ubuntu:${DISTRO_VERSION}
 
+HEALTHCHECK NONE
+
 LABEL maintainer="Conan.io <info@conan.io>"
 
 ENV PYENV_ROOT=/opt/pyenv \
@@ -20,7 +22,6 @@ RUN apt-get -qq update \
     && add-apt-repository ppa:git-core/ppa -y \
     && apt-get -qq update \
     && apt-get -qq install -y --no-install-recommends --no-install-suggests -o=Dpkg::Use-Pty=0 \
-       sudo \
        binutils \
        wget \
        git \
@@ -51,7 +52,7 @@ RUN apt-get -qq update \
 
 ARG CMAKE_VERSION
 
-RUN wget -q --no-check-certificate https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz \
+RUN wget -q https://cmake.org/files/v${CMAKE_VERSION%.*}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz \
     && tar -xzf cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz \
        --exclude=bin/cmake-gui \
        --exclude=doc/cmake \
@@ -62,7 +63,8 @@ RUN wget -q --no-check-certificate https://cmake.org/files/v${CMAKE_VERSION%.*}/
     && rm -rf /root/cmake-${CMAKE_VERSION}-Linux-x86_64 \
     && rm /root/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz
 
-RUN curl -fL https://getcli.jfrog.io | sh -s 1.48.1 \
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+RUN wget -q -L https://getcli.jfrog.io -O - | sh -s 1.48.1 \
     && mv jfrog /usr/local/bin/jfrog \
     && chmod +x /usr/local/bin/jfrog
 
@@ -70,14 +72,11 @@ RUN groupadd -f conan-1001 -g 1001 \
     && groupadd -f conan-1000 -g 1000 \
     && groupadd -f conan-2000 -g 2000 \
     && groupadd -f conan-999 -g 999 \
-    && useradd -ms /bin/bash conan -g 1001 -G 1000,2000,999 \
-    && printf "conan:conan" | chpasswd \
-    && adduser conan sudo \
-    && printf "conan ALL= NOPASSWD: ALL\\n" >> /etc/sudoers
+    && useradd -ms /bin/bash conan -g 1001 -G 1000,2000,999
 
 ARG PYTHON_VERSION
 
-RUN wget --no-check-certificate --quiet -O /tmp/pyenv-installer https://raw.githubusercontent.com/pyenv/pyenv-installer/56d708c8bda56370c4bc1e2fce68087cfcd007eb/bin/pyenv-installer \
+RUN wget --quiet -O /tmp/pyenv-installer https://raw.githubusercontent.com/pyenv/pyenv-installer/56d708c8bda56370c4bc1e2fce68087cfcd007eb/bin/pyenv-installer \
     && chmod +x /tmp/pyenv-installer \
     && /tmp/pyenv-installer \
     && rm /tmp/pyenv-installer \
@@ -114,12 +113,11 @@ RUN printf '/usr/local/lib\n' > /etc/ld.so.conf.d/20local-lib.conf \
        liblzma-dev \
     && apt-get -qq autoremove -y \
     && apt-get -qq autoclean \
-    && apt-get -qq update \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /tmp/*
 
-RUN runuser -u conan -- printf 'eval "$(pyenv init -)"\n' >> /home/conan/.bashrc \
-    && runuser -u conan -- printf 'eval "$(pyenv virtualenv-init -)"\n' >> /home/conan/.bashrc \
+RUN runuser -u conan -- printf "eval '$(pyenv init -)'\n" >> /home/conan/.bashrc \
+    && runuser -u conan -- printf "eval '$(pyenv virtualenv-init -)'\n" >> /home/conan/.bashrc \
     && chown -R conan:1001 /opt/pyenv \
     && chown -R conan:1001 /opt/conan
 
@@ -128,7 +126,7 @@ WORKDIR /home/conan
 
 ARG CONAN_VERSION
 
-RUN pip install conan~=1.0 \
+RUN pip install --no-cache-dir conan~=1.0 \
     && CONAN_REVISIONS_ENABLED=1 CONAN_USER_HOME=/tmp/conan conan install -r conancenter -g deploy -if /opt/conan -l /opt/conan/conan.lock /opt/conan/conanfile.txt \
     && rm -rf /tmp/conan \
-    && pip install conan==${CONAN_VERSION}
+    && pip install --no-cache-dir conan==${CONAN_VERSION}
